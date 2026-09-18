@@ -1,0 +1,326 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - application/**
+      - kubernetes/**
+      - pipelines/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - application/**
+      - kubernetes/**
+      - pipelines/**
+
+variables:
+  azureServiceConnection: 'sc-azure-resilience-prod'
+
+  aksResourceGroup: 'core-res-prod-cus-hub-rg'
+  aksClusterName: 'core-res-prod-cus-aks-app01'
+
+  acrName: 'coreresprodcusacr'
+  acrLoginServer: 'coreresprodcusacr.azurecr.io'
+
+  imageRepository: 'resilience-app'
+  kubernetesNamespace: 'resilience-app'
+
+  vmImageName: 'ubuntu-latest'
+
+stages:
+
+# ============================================================
+# Stage 1 - Validate
+# ============================================================
+
+- stage: Validate
+  displayName: 'Validate application and Kubernetes manifests'
+
+  jobs:
+  - job: Validate
+    displayName: 'Validate'
+
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.12'
+      inputs:
+        versionSpec: '3.12'
+
+    - script: |
+        python --version
+        python -m pip --version
+      displayName: 'Verify Python'
+
+    - script: |
+        python -m pip install --upgrade pip
+        python -m pip install -r application/requirements.txt
+      displayName: 'Install Python dependencies'
+
+    - script: |
+        python -m compileall application
+      displayName: 'Python compile validation'
+
+    - script: |
+        kubectl version --client
+      displayName: 'Verify kubectl'
+
+    - script: |
+        kubectl kustomize kubernetes/overlays/prod > rendered.yaml
+
+        echo "Checking rendered Kubernetes manifest..."
+
+        grep -q "kind: Deployment" rendered.yaml
+        grep -q "kind: Service" rendered.yaml
+        grep -q "kind: HorizontalPodAutoscaler" rendered.yaml
+        grep -q "kind: ServiceMonitor" rendered.yaml
+
+        echo "Kubernetes manifest validation passed."
+      displayName: 'Validate Kustomize'
+
+# ============================================================
+# Stage 2 - Build, Scan and Push
+# ============================================================
+
+- stage: BuildAndScan
+  displayName: 'Build, Trivy scan and push image'
+  dependsOn: Validate
+  condition: succeeded()
+
+  jobs:
+  - job: BuildScanPush
+    displayName: 'Build ARM64 image, scan and push'
+
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+
+    - checkout: self
+      fetchDepth: 1
+
+    - script: |
+        docker version
+        docker buildx version
+      displayName: 'Verify Docker Buildx'
+
+    - script: |
+        docker buildx create \
+          --name resilience-builder \
+          --driver docker-container \
+          --use
+
+        docker buildx inspect --bootstrap
+      displayName: 'Create Buildx builder'
+
+    - task: AzureCLI@2
+      displayName: 'Login to Azure and ACR'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          az account show
+
+          az acr login \
+            --name "$(acrName)"
+
+    - script: |
+        IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+
+        echo "Building image:"
+        echo "$IMAGE"
+
+        docker buildx build \
+          --builder resilience-builder \
+          --platform linux/arm64 \
+          --tag "$IMAGE" \
+          --load \
+          ./application
+      displayName: 'Build ARM64 image'
+
+    - script: |
+        docker images "$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+      displayName: 'Verify image'
+
+    - script: |
+        set -e
+
+        echo "Installing Trivy..."
+
+        sudo apt-get update
+        sudo apt-get install -y wget
+
+        wget -qO- https://aquasecurity.github.io/trivy-repo/deb/public.key \
+          | gpg --dearmor \
+          | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+          | sudo tee /etc/apt/sources.list.d/trivy.list
+
+        sudo apt-get update
+        sudo apt-get install -y trivy
+
+        trivy --version
+      displayName: 'Install Trivy'
+
+    - script: |
+        set -e
+
+        IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+
+        trivy image \
+          --severity HIGH,CRITICAL \
+          --ignore-unfixed \
+          --exit-code 1 \
+          "$IMAGE"
+      displayName: 'Trivy vulnerability scan'
+
+    - script: |
+        set -e
+
+        IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+
+        echo "Pushing:"
+        echo "$IMAGE"
+
+        docker push "$IMAGE"
+      displayName: 'Push image to ACR'
+
+# ============================================================
+# Stage 3 - Deploy
+# ============================================================
+
+- stage: Deploy
+  displayName: 'Deploy to AKS'
+  dependsOn: BuildAndScan
+  condition: succeeded()
+
+  jobs:
+  - deployment: DeployToAKS
+    displayName: 'Deploy resilience-app'
+    environment: 'resilience-prod'
+
+    pool:
+      vmImage: $(vmImageName)
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: 'Deploy application to AKS'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+
+                echo "Getting AKS credentials..."
+
+                az aks get-credentials \
+                  --resource-group "$(aksResourceGroup)" \
+                  --name "$(aksClusterName)" \
+                  --overwrite-existing
+
+                echo "Updating deployment image..."
+
+                kubectl -n "$(kubernetesNamespace)" set image \
+                  deployment/resilience-app \
+                  resilience-app="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+
+                echo "Waiting for rollout..."
+
+                kubectl -n "$(kubernetesNamespace)" rollout status \
+                  deployment/resilience-app \
+                  --timeout=300s
+
+                echo "Deployment completed."
+
+# ============================================================
+# Stage 4 - Verify
+# ============================================================
+
+- stage: Verify
+  displayName: 'Verify application health'
+  dependsOn: Deploy
+  condition: succeeded()
+
+  jobs:
+  - job: Verify
+    displayName: 'Verify AKS deployment'
+
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+
+    - task: AzureCLI@2
+      displayName: 'Verify AKS application'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          az aks get-credentials \
+            --resource-group "$(aksResourceGroup)" \
+            --name "$(aksClusterName)" \
+            --overwrite-existing
+
+          echo "Pods:"
+          kubectl -n "$(kubernetesNamespace)" get pods -o wide
+
+          echo
+          echo "Deployment:"
+          kubectl -n "$(kubernetesNamespace)" get deployment resilience-app
+
+          echo
+          echo "Service:"
+          kubectl -n "$(kubernetesNamespace)" get service resilience-app
+
+          echo
+          echo "Waiting for ready replicas..."
+
+          kubectl -n "$(kubernetesNamespace)" wait \
+            --for=condition=Available \
+            deployment/resilience-app \
+            --timeout=120s
+
+          echo
+          echo "Starting temporary port-forward..."
+
+          kubectl -n "$(kubernetesNamespace)" \
+            port-forward service/resilience-app 18080:80 \
+            > /tmp/resilience-port-forward.log 2>&1 &
+
+          PORT_FORWARD_PID=$!
+
+          trap 'kill $PORT_FORWARD_PID 2>/dev/null || true' EXIT
+
+          sleep 5
+
+          echo
+          echo "Testing /health..."
+
+          curl --fail --silent \
+            http://127.0.0.1:18080/health
+
+          echo
+          echo
+          echo "Health check passed."
