@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resilience-app
+  namespace: resilience-app
+  labels:
+    app: resilience-app
+
+spec:
+  replicas: 2
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+
+  selector:
+    matchLabels:
+      app: resilience-app
+
+  template:
+    metadata:
+      labels:
+        app: resilience-app
+        azure.workload.identity/use: "true"
+
+    spec:
+      serviceAccountName: resilience-app
+
+      tolerations:
+        - key: "CriticalAddonsOnly"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: resilience-app-kv
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: resilience-app
+              topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: resilience-app
+          image: resilience-app:latest
+
+          ports:
+            - name: http
+              containerPort: 8080
+
+          envFrom:
+            - configMapRef:
+                name: resilience-app-config
+
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20

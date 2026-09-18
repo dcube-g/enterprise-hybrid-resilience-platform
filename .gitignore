@@ -1,0 +1,79 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform sensitive/local files
+terraform.tfvars
+terraform.tfvars.json
+backend.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+.kube/
+secrets/
+*.secret.yaml
+*.secret.yml
+
+# Azure
+.azure/
+.azure-devops/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+
+# Application
+node_modules/
+target/
+build/
+dist/
+coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Generated reports
+reports/

@@ -1,0 +1,14 @@
+apiVersion: azmonitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: resilience-app
+  namespace: resilience-app
+spec:
+  selector:
+    matchLabels:
+      app: resilience-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scheme: http
