@@ -86,18 +86,19 @@ stages:
         echo "Kubernetes manifest validation passed."
       displayName: 'Validate Kustomize'
 
+
 # ============================================================
 # Stage 2 - Build, Scan and Push
 # ============================================================
 
 - stage: BuildAndScan
-  displayName: 'Build, Trivy scan and push image'
+  displayName: 'Build, Trivy scan and push multi-architecture image'
   dependsOn: Validate
   condition: succeeded()
 
   jobs:
   - job: BuildScanPush
-    displayName: 'Build ARM64 image, scan and push'
+    displayName: 'Build multi-architecture image, scan and push'
 
     pool:
       vmImage: $(vmImageName)
@@ -130,28 +131,65 @@ stages:
         inlineScript: |
           set -e
 
+          echo "Azure account:"
           az account show
+
+          echo
+          echo "Logging into Azure Container Registry..."
 
           az acr login \
             --name "$(acrName)"
 
+          echo
+          echo "ACR login completed."
+
+
+    # --------------------------------------------------------
+    # Build AMD64 + ARM64 image and push manifest
+    # --------------------------------------------------------
+
     - script: |
+        set -e
+
         IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
 
-        echo "Building image:"
+        echo "Building multi-architecture image:"
         echo "$IMAGE"
+
+        echo
+        echo "Target platforms:"
+        echo "  linux/amd64"
+        echo "  linux/arm64"
+        echo
 
         docker buildx build \
           --builder resilience-builder \
-          --platform linux/arm64 \
+          --platform linux/amd64,linux/arm64 \
           --tag "$IMAGE" \
-          --load \
+          --push \
           ./application
-      displayName: 'Build ARM64 image'
+      displayName: 'Build and push multi-architecture image'
+
+
+    # --------------------------------------------------------
+    # Verify multi-architecture manifest
+    # --------------------------------------------------------
 
     - script: |
-        docker images "$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
-      displayName: 'Verify image'
+        set -e
+
+        IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+
+        echo "Verifying pushed multi-architecture image:"
+        echo "$IMAGE"
+
+        docker buildx imagetools inspect "$IMAGE"
+      displayName: 'Verify multi-architecture image'
+
+
+    # --------------------------------------------------------
+    # Install Trivy
+    # --------------------------------------------------------
 
     - script: |
         set -e
@@ -171,31 +209,50 @@ stages:
         sudo apt-get update
         sudo apt-get install -y trivy
 
+        echo
+        echo "Trivy version:"
         trivy --version
       displayName: 'Install Trivy'
+
+
+    # --------------------------------------------------------
+    # Scan AMD64 and ARM64 images
+    # --------------------------------------------------------
 
     - script: |
         set -e
 
         IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
 
+        echo "=========================================="
+        echo "Scanning AMD64 image"
+        echo "=========================================="
+
         trivy image \
+          --platform linux/amd64 \
           --severity HIGH,CRITICAL \
           --ignore-unfixed \
           --exit-code 1 \
           "$IMAGE"
+
+        echo
+        echo "=========================================="
+        echo "Scanning ARM64 image"
+        echo "=========================================="
+
+        trivy image \
+          --platform linux/arm64 \
+          --severity HIGH,CRITICAL \
+          --ignore-unfixed \
+          --exit-code 1 \
+          "$IMAGE"
+
+        echo
+        echo "=========================================="
+        echo "Trivy security scans passed"
+        echo "=========================================="
       displayName: 'Trivy vulnerability scan'
 
-    - script: |
-        set -e
-
-        IMAGE="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
-
-        echo "Pushing:"
-        echo "$IMAGE"
-
-        docker push "$IMAGE"
-      displayName: 'Push image to ACR'
 
 # ============================================================
 # Stage 3 - Deploy
@@ -237,19 +294,23 @@ stages:
                   --name "$(aksClusterName)" \
                   --overwrite-existing
 
+                echo
                 echo "Updating deployment image..."
 
                 kubectl -n "$(kubernetesNamespace)" set image \
                   deployment/resilience-app \
                   resilience-app="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
 
+                echo
                 echo "Waiting for rollout..."
 
                 kubectl -n "$(kubernetesNamespace)" rollout status \
                   deployment/resilience-app \
                   --timeout=300s
 
+                echo
                 echo "Deployment completed."
+
 
 # ============================================================
 # Stage 4 - Verify
@@ -278,24 +339,38 @@ stages:
         inlineScript: |
           set -e
 
+          echo "Getting AKS credentials..."
+
           az aks get-credentials \
             --resource-group "$(aksResourceGroup)" \
             --name "$(aksClusterName)" \
             --overwrite-existing
 
-          echo "Pods:"
+          echo
+          echo "=========================================="
+          echo "Pods"
+          echo "=========================================="
+
           kubectl -n "$(kubernetesNamespace)" get pods -o wide
 
           echo
-          echo "Deployment:"
+          echo "=========================================="
+          echo "Deployment"
+          echo "=========================================="
+
           kubectl -n "$(kubernetesNamespace)" get deployment resilience-app
 
           echo
-          echo "Service:"
+          echo "=========================================="
+          echo "Service"
+          echo "=========================================="
+
           kubectl -n "$(kubernetesNamespace)" get service resilience-app
 
           echo
-          echo "Waiting for ready replicas..."
+          echo "=========================================="
+          echo "Waiting for ready replicas"
+          echo "=========================================="
 
           kubectl -n "$(kubernetesNamespace)" wait \
             --for=condition=Available \
@@ -303,7 +378,9 @@ stages:
             --timeout=120s
 
           echo
-          echo "Starting temporary port-forward..."
+          echo "=========================================="
+          echo "Starting temporary port-forward"
+          echo "=========================================="
 
           kubectl -n "$(kubernetesNamespace)" \
             port-forward service/resilience-app 18080:80 \
@@ -316,7 +393,9 @@ stages:
           sleep 5
 
           echo
-          echo "Testing /health..."
+          echo "=========================================="
+          echo "Testing /health"
+          echo "=========================================="
 
           curl --fail --silent \
             http://127.0.0.1:18080/health
