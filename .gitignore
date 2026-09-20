@@ -1,6 +1,5 @@
 # Terraform
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 crash.log
@@ -77,3 +76,18 @@ temp/
 
 # Generated reports
 reports/
+
+# Terraform generated files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+
+# Terraform variable files
+*.tfvars
+*.tfvars.json
+
+# Local Terraform backup files
+*.backup
+*.frontdoor-backup

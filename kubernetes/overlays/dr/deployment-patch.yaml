@@ -1,0 +1,7 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resilience-app
+  namespace: resilience-app
+spec:
+  replicas: 1

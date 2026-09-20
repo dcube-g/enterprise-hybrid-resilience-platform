@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resilience-app-config
+  namespace: resilience-app
+data:
+  APP_ENVIRONMENT: "dr"
