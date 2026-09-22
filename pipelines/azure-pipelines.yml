@@ -8,6 +8,7 @@ trigger:
       - kubernetes/**
       - pipelines/**
       - terraform/**
+
 pr:
   branches:
     include:
@@ -74,6 +75,10 @@ stages:
         kubectl version --client
       displayName: 'Verify kubectl'
 
+    # --------------------------------------------------------
+    # Validate PROD and DR Kustomize overlays
+    # --------------------------------------------------------
+
     - script: |
         set -e
 
@@ -109,6 +114,71 @@ stages:
         echo "PROD and DR Kustomize validation passed"
         echo "=========================================="
       displayName: 'Validate PROD and DR Kustomize'
+
+    # --------------------------------------------------------
+    # Validate Azure Backup configuration-as-code
+    #
+    # NOTE:
+    # These manifests are intentionally NOT applied to AKS.
+    # They are validated as GitOps configuration only.
+    # --------------------------------------------------------
+
+    - script: |
+        set -e
+
+        echo "=========================================="
+        echo "Validating Azure Backup configuration"
+        echo "=========================================="
+
+        kubectl kustomize kubernetes/backup/azure-backup > rendered-azure-backup.yaml
+
+        echo
+        echo "Rendered Azure Backup configuration:"
+        echo "------------------------------------------"
+
+        cat rendered-azure-backup.yaml
+
+        echo
+        echo "Checking BackupHook..."
+
+        grep -q "kind: BackupHook" rendered-azure-backup.yaml
+
+        echo
+        echo "Checking RestoreHook..."
+
+        grep -q "kind: RestoreHook" rendered-azure-backup.yaml
+
+        echo
+        echo "Checking Azure Backup API version..."
+
+        grep -q "clusterbackup.dataprotection.microsoft.com/v1alpha1" rendered-azure-backup.yaml
+
+        echo
+        echo "Checking BackupHook name..."
+
+        grep -q "name: resilience-app-backup-hook" rendered-azure-backup.yaml
+
+        echo
+        echo "Checking RestoreHook name..."
+
+        grep -q "name: resilience-app-restore-hook" rendered-azure-backup.yaml
+
+        echo
+        echo "Checking target namespace..."
+
+        grep -q "namespace: resilience-app" rendered-azure-backup.yaml
+
+        echo
+        echo "=========================================="
+        echo "Azure Backup configuration validation passed"
+        echo "=========================================="
+
+        echo
+        echo "NOTE:"
+        echo "Azure Backup resources are validated only."
+        echo "They are NOT applied to the AKS cluster."
+        echo "The Azure Backup Extension remains disabled."
+      displayName: 'Validate Azure Backup configuration'
 
 # ============================================================
 # Stage 2 - Build, Scan and Push
@@ -166,7 +236,6 @@ stages:
           echo
           echo "ACR login completed."
 
-
     # --------------------------------------------------------
     # Build AMD64 + ARM64 image and push manifest
     # --------------------------------------------------------
@@ -193,7 +262,6 @@ stages:
           ./application
       displayName: 'Build and push multi-architecture image'
 
-
     # --------------------------------------------------------
     # Verify multi-architecture manifest
     # --------------------------------------------------------
@@ -208,7 +276,6 @@ stages:
 
         docker buildx imagetools inspect "$IMAGE"
       displayName: 'Verify multi-architecture image'
-
 
     # --------------------------------------------------------
     # Install Trivy
@@ -236,7 +303,6 @@ stages:
         echo "Trivy version:"
         trivy --version
       displayName: 'Install Trivy'
-
 
     # --------------------------------------------------------
     # Scan AMD64 and ARM64 images
@@ -275,7 +341,6 @@ stages:
         echo "Trivy security scans passed"
         echo "=========================================="
       displayName: 'Trivy vulnerability scan'
-
 
 # ============================================================
 # Stage 3 - Deploy
@@ -333,7 +398,6 @@ stages:
 
                 echo
                 echo "Deployment completed."
-
 
 # ============================================================
 # Stage 4 - Verify

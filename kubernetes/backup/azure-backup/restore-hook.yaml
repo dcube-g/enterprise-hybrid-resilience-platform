@@ -1,0 +1,18 @@
+apiVersion: clusterbackup.dataprotection.microsoft.com/v1alpha1
+kind: RestoreHook
+metadata:
+  name: resilience-app-restore-hook
+  namespace: resilience-app
+spec:
+  restoreHook:
+    - name: resilience-app-restore
+      includedNamespaces:
+        - resilience-app
+      postHooks:
+        - exec:
+            container: resilience-app
+            command:
+              - /bin/true
+            onError: Continue
+            execTimeout: 30s
+            waitTimeout: 5m

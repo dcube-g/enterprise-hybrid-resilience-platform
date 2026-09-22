@@ -1,7 +1,8 @@
 module "acr" {
   source = "../../modules/acr"
 
-  #  name                = "${local.name_prefix}${local.region_code}acr"
+  # name = "${local.name_prefix}${local.region_code}acr"
+
   name                = "${var.organization}${var.project_name}${var.environment}${local.region_code}acr"
   location            = var.location
   resource_group_name = module.resource_group.name
@@ -46,8 +47,6 @@ locals {
   }
 }
 
-data "azurerm_client_config" "current" {}
-
 module "resource_group" {
   source = "../../modules/resource-group"
 
@@ -55,6 +54,7 @@ module "resource_group" {
   location = var.location
   tags     = local.tags
 }
+
 module "network" {
   source = "../../modules/network"
 
@@ -67,17 +67,19 @@ module "network" {
 }
 
 module "aks" {
-  workload_vm_size    = "Standard_B2pls_v2"
-  workload_node_count = 2
-  workload_subnet_id  = module.network.subnet_ids["aks-workload"]
-  key_vault_id        = module.key_vault.id
-  source              = "../../modules/aks"
+  source = "../../modules/aks"
 
   name                = "${local.name_prefix}-${local.region_code}-aks-app01"
   location            = var.location
   resource_group_name = module.resource_group.name
 
   subnet_id = module.network.subnet_ids["aks-system"]
+
+  workload_vm_size    = "Standard_B2pls_v2"
+  workload_node_count = 2
+  workload_subnet_id  = module.network.subnet_ids["aks-workload"]
+
+  key_vault_id = module.key_vault.id
 
   dns_prefix = "${local.name_prefix}-${local.region_code}"
 
@@ -93,6 +95,22 @@ module "aks" {
   tags = local.tags
 }
 
+module "backup" {
+  source = "../../modules/backup"
+
+  location                  = var.location
+  resource_group_name       = module.resource_group.name
+  aks_id                    = module.aks.id
+  aks_identity_principal_id = module.aks.identity_principal_id
+
+  snapshot_resource_group_name = "${local.name_prefix}-${local.region_code}-backup-snap-rg"
+  backup_vault_name            = "${local.name_prefix}-${local.region_code}-backup-vault"
+  backup_policy_name           = "${local.name_prefix}-${local.region_code}-aks-backup-policy"
+
+  backup_storage_account_name = "coreresprodcusaksbkp01"
+  backup_container_name       = "aksbackup"
+}
+
 module "bastion" {
   source = "../../modules/bastion"
 
@@ -103,16 +121,9 @@ module "bastion" {
   subnet_id          = module.network.subnet_ids["AzureBastionSubnet"]
   virtual_network_id = module.network.vnet_id
 
-  sku = "Developer"
-
   tags = local.tags
 }
 
-resource "azurerm_role_assignment" "current_user_key_vault_secrets_officer" {
-  scope                = module.key_vault.id
-  role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
-}
 
 resource "azurerm_user_assigned_identity" "resilience_app" {
   name                = "${local.name_prefix}-${local.region_code}-app-identity"
@@ -122,19 +133,39 @@ resource "azurerm_user_assigned_identity" "resilience_app" {
   tags = local.tags
 }
 
-resource "azurerm_role_assignment" "resilience_app_key_vault_secrets_user" {
-  scope                = module.key_vault.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_user_assigned_identity.resilience_app.principal_id
-}
-
 resource "azurerm_federated_identity_credential" "resilience_app" {
-  name                      = "${local.name_prefix}-${local.region_code}-app-federated"
-  user_assigned_identity_id = azurerm_user_assigned_identity.resilience_app.id
+  name                = "${local.name_prefix}-${local.region_code}-app-federated"
+  resource_group_name = module.resource_group.name
+  parent_id           = azurerm_user_assigned_identity.resilience_app.id
 
-  audience = ["api://AzureADTokenExchange"]
+  audience = [
+    "api://AzureADTokenExchange"
+  ]
 
   issuer  = module.aks.oidc_issuer_url
   subject = "system:serviceaccount:resilience-app:resilience-app"
 }
+
+resource "azurerm_role_assignment" "resilience_app_key_vault_secrets_user" {
+  scope                = module.key_vault.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.resilience_app.principal_id
+
+  depends_on = [
+    module.key_vault,
+    azurerm_user_assigned_identity.resilience_app
+  ]
+}
+
+resource "azurerm_role_assignment" "current_user_key_vault_secrets_officer" {
+  scope                = module.key_vault.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+
+  depends_on = [
+    module.key_vault
+  ]
+}
+
+data "azurerm_client_config" "current" {}
 
