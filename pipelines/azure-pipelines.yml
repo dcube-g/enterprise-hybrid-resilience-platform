@@ -7,7 +7,7 @@ trigger:
       - application/**
       - kubernetes/**
       - pipelines/**
-
+      - terraform/**
 pr:
   branches:
     include:
@@ -17,6 +17,7 @@ pr:
       - application/**
       - kubernetes/**
       - pipelines/**
+      - terraform/**
 
 variables:
   azureServiceConnection: 'sc-azure-resilience-prod'
@@ -260,7 +261,7 @@ stages:
 
 - stage: Deploy
   displayName: 'Deploy to AKS'
-  dependsOn: BuildAndScan
+  dependsOn: TerraformValidate
   condition: succeeded()
 
   jobs:
@@ -403,3 +404,127 @@ stages:
           echo
           echo
           echo "Health check passed."
+
+# ============================================================
+# Stage 5 - Terraform Validate and Plan
+# ============================================================
+
+- stage: TerraformValidate
+  displayName: 'Terraform validate and plan'
+  dependsOn: BuildAndScan
+  condition: succeeded()
+
+  jobs:
+  - job: TerraformValidate
+    displayName: 'Validate and plan PROD, DR and GLOBAL'
+
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: 'Terraform fmt, init, validate and plan'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          echo "=========================================="
+          echo "Azure authentication"
+          echo "=========================================="
+
+          az account show --output table
+
+          TENANT_ID=$(az account show --query tenantId -o tsv)
+
+          if [ -z "$TENANT_ID" ]; then
+            echo "ERROR: Azure tenant ID could not be determined."
+            exit 1
+          fi
+
+          echo "Azure tenant detected successfully."
+
+          echo
+          echo "=========================================="
+          echo "Installing Terraform 1.16.3"
+          echo "=========================================="
+
+          TERRAFORM_VERSION="1.16.3"
+
+          wget -q \
+            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
+            -O /tmp/terraform.zip
+
+          rm -rf /tmp/terraform-bin
+          mkdir -p /tmp/terraform-bin
+
+          unzip -o /tmp/terraform.zip -d /tmp/terraform-bin
+
+          sudo install /tmp/terraform-bin/terraform /usr/local/bin/terraform
+
+          terraform version
+
+          echo
+          echo "=========================================="
+          echo "Terraform PROD"
+          echo "=========================================="
+
+          cd "$(Build.SourcesDirectory)/terraform/environments/prod"
+
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+
+          terraform plan \
+            -input=false \
+            -var="tenant_id=${TENANT_ID}" \
+            -out=/tmp/prod.tfplan
+
+          echo
+          echo "PROD Terraform validation and plan passed."
+
+          echo
+          echo "=========================================="
+          echo "Terraform DR"
+          echo "=========================================="
+
+          cd "$(Build.SourcesDirectory)/terraform/environments/dr"
+
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+
+          terraform plan \
+            -input=false \
+            -out=/tmp/dr.tfplan
+
+          echo
+          echo "DR Terraform validation and plan passed."
+
+          echo
+          echo "=========================================="
+          echo "Terraform GLOBAL"
+          echo "=========================================="
+
+          cd "$(Build.SourcesDirectory)/terraform/environments/global"
+
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+
+          terraform plan \
+            -input=false \
+            -out=/tmp/global.tfplan
+
+          echo
+          echo "GLOBAL Terraform validation and plan passed."
+
+          echo
+          echo "=========================================="
+          echo "All Terraform validation and plans passed"
+          echo "=========================================="
