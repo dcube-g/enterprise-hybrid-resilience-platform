@@ -383,11 +383,61 @@ stages:
                   --overwrite-existing
 
                 echo
-                echo "Updating deployment image..."
+                echo "Preparing production Kustomize deployment..."
 
-                kubectl -n "$(kubernetesNamespace)" set image \
-                  deployment/resilience-app \
-                  resilience-app="$(acrLoginServer)/$(imageRepository):$(Build.BuildId)"
+                cd "$(Build.SourcesDirectory)"
+
+                KUSTOMIZATION="kubernetes/overlays/prod/kustomization.yaml"
+                BACKUP="/tmp/prod-kustomization.yaml.backup"
+
+                cp "$KUSTOMIZATION" "$BACKUP"
+
+                restore_kustomization() {
+                  cp "$BACKUP" "$KUSTOMIZATION"
+                }
+
+                trap restore_kustomization EXIT
+
+                echo "Updating production image tag..."
+
+                sed -i \
+                  "s/^    newTag: .*/    newTag: \"$(Build.BuildId)\"/" \
+                  "$KUSTOMIZATION"
+
+                echo
+                echo "Production Kustomization image tag:"
+                grep "newTag:" "$KUSTOMIZATION"
+
+                echo
+                echo "Rendering production manifests..."
+
+                kubectl kustomize kubernetes/overlays/prod \
+                  > /tmp/resilience-prod-rendered.yaml
+
+                echo
+                echo "Verifying rendered image..."
+
+                grep -q \
+                  "$(acrLoginServer)/$(imageRepository):$(Build.BuildId)" \
+                  /tmp/resilience-prod-rendered.yaml
+
+                echo
+                echo "Verifying security hardening..."
+
+                grep -q "runAsNonRoot: true" \
+                  /tmp/resilience-prod-rendered.yaml
+
+                grep -q "runAsUser: 1000" \
+                  /tmp/resilience-prod-rendered.yaml
+
+                grep -q "allowPrivilegeEscalation: false" \
+                  /tmp/resilience-prod-rendered.yaml
+
+                echo
+                echo "Applying production manifests..."
+
+                kubectl apply \
+                  -f /tmp/resilience-prod-rendered.yaml
 
                 echo
                 echo "Waiting for rollout..."
@@ -397,7 +447,8 @@ stages:
                   --timeout=300s
 
                 echo
-                echo "Deployment completed."
+                echo "Deployment completed successfully."
+
 
 # ============================================================
 # Stage 4 - Verify
