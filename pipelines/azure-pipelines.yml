@@ -75,18 +75,40 @@ stages:
       displayName: 'Verify kubectl'
 
     - script: |
-        kubectl kustomize kubernetes/overlays/prod > rendered.yaml
+        set -e
 
-        echo "Checking rendered Kubernetes manifest..."
+        echo "=========================================="
+        echo "Validating PROD Kustomize overlay"
+        echo "=========================================="
 
-        grep -q "kind: Deployment" rendered.yaml
-        grep -q "kind: Service" rendered.yaml
-        grep -q "kind: HorizontalPodAutoscaler" rendered.yaml
-        grep -q "kind: ServiceMonitor" rendered.yaml
+        kubectl kustomize kubernetes/overlays/prod > rendered-prod.yaml
 
-        echo "Kubernetes manifest validation passed."
-      displayName: 'Validate Kustomize'
+        grep -q "kind: Deployment" rendered-prod.yaml
+        grep -q "kind: Service" rendered-prod.yaml
+        grep -q "kind: HorizontalPodAutoscaler" rendered-prod.yaml
+        grep -q "kind: ServiceMonitor" rendered-prod.yaml
 
+        echo "PROD Kustomize validation passed."
+
+        echo
+        echo "=========================================="
+        echo "Validating DR Kustomize overlay"
+        echo "=========================================="
+
+        kubectl kustomize kubernetes/overlays/dr > rendered-dr.yaml
+
+        grep -q "kind: Deployment" rendered-dr.yaml
+        grep -q "kind: Service" rendered-dr.yaml
+        grep -q "kind: HorizontalPodAutoscaler" rendered-dr.yaml
+        grep -q "kind: ServiceMonitor" rendered-dr.yaml
+
+        echo "DR Kustomize validation passed."
+
+        echo
+        echo "=========================================="
+        echo "PROD and DR Kustomize validation passed"
+        echo "=========================================="
+      displayName: 'Validate PROD and DR Kustomize'
 
 # ============================================================
 # Stage 2 - Build, Scan and Push
