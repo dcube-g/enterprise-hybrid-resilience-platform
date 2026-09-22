@@ -93,7 +93,6 @@ reports/
 *.frontdoor-backup
 
 # Terraform local plan files
- tfplan
 
 # Terraform local plan files
 tfplan
