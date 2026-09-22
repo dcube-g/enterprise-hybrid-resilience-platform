@@ -2,13 +2,33 @@
 
 # Disaster Recovery Runbook
 
+Primary health check
+        ↓
+Confirm primary failure
+        ↓
+Traffic Manager health detection
+        ↓
+DNS failover
+        ↓
+Validate South India
+        ↓
+Restore Central US
+        ↓
+Confirm primary healthy
+        ↓
+DNS failback
+        ↓
+Validate application
+
+
+
 ## 1. Purpose
 
 This runbook describes the regional disaster recovery procedure for the Enterprise Hybrid Resilience Platform when the Central US application becomes unavailable.
 
 The architecture uses Azure Traffic Manager with priority-based DNS routing:
 
-```text
+text
                     Azure Traffic Manager
                  core-res-prod-global-tm
                            |
@@ -23,7 +43,7 @@ The architecture uses Azure Traffic Manager with priority-based DNS routing:
               AKS                   AKS
                 |                     |
         resilience-app        resilience-app
-```
+
 
 ---
 

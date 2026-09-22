@@ -212,6 +212,13 @@ Important:
 Traffic Manager uses DNS-based routing. Therefore DNS resolver caching and
 client-side DNS caching can affect observed recovery time.
 
+Regional DR
+    └── VALIDATED
+
+Azure Backup foundation
+    └── IMPLEMENTED / CONFIGURATION VALIDATED
+
+
 ---
 
 ## 10. RPO

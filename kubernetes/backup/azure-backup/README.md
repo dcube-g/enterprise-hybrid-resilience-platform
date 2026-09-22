@@ -14,7 +14,10 @@ This directory contains Azure Backup custom resources for the
 Azure Backup hooks are maintained as configuration-as-code and are
 validated by CI.
 
-They are intentionally not applied to the current AKS cluster.
+They are not connected to an active Azure Backup runtime on the current AKS cluster.
+
+The BackupHook and RestoreHook custom resources may exist on the cluster,
+but the Azure Backup Extension and backup runtime are currently disabled.
 
 The current lab cluster uses an ARM64 node pool and has limited
 regional vCPU capacity. The Azure Backup Extension was therefore
@@ -50,5 +53,6 @@ Primary AKS
     |
     +-- DR AKS
 
-The hooks are currently documentation/configuration artifacts and are
-not active runtime resources.
+The hooks are configuration-as-code artifacts validated through CI.
+They are not connected to an active Azure Backup runtime while the
+Azure Backup Extension remains disabled.
