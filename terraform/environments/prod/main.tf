@@ -129,9 +129,8 @@ resource "azurerm_role_assignment" "resilience_app_key_vault_secrets_user" {
 }
 
 resource "azurerm_federated_identity_credential" "resilience_app" {
-  name                = "${local.name_prefix}-${local.region_code}-app-federated"
-  resource_group_name = module.resource_group.name
-  parent_id           = azurerm_user_assigned_identity.resilience_app.id
+  name                      = "${local.name_prefix}-${local.region_code}-app-federated"
+  user_assigned_identity_id = azurerm_user_assigned_identity.resilience_app.id
 
   audience = ["api://AzureADTokenExchange"]
 
