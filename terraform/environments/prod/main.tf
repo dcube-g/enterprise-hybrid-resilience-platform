@@ -1,8 +1,6 @@
 module "acr" {
   source = "../../modules/acr"
 
-  # name = "${local.name_prefix}${local.region_code}acr"
-
   name                = "${var.organization}${var.project_name}${var.environment}${local.region_code}acr"
   location            = var.location
   resource_group_name = module.resource_group.name
@@ -40,10 +38,14 @@ locals {
   region_code = "cus"
 
   tags = {
-    Environment = var.environment
-    Project     = "Enterprise Hybrid Resilience Platform"
-    ManagedBy   = "Terraform"
-    Owner       = var.organization
+    Environment        = var.environment
+    Project            = "Enterprise Hybrid Resilience Platform"
+    ManagedBy          = "Terraform"
+    Owner              = var.organization
+    CostCenter         = var.cost_center
+    Criticality        = var.criticality
+    DataClassification = var.data_classification
+    DRTier             = var.dr_tier
   }
 }
 
@@ -55,6 +57,18 @@ module "resource_group" {
   tags     = local.tags
 }
 
+module "governance" {
+  source = "../../modules/governance"
+
+  resource_group_id = module.resource_group.id
+  environment       = var.environment
+  tags              = local.tags
+
+  depends_on = [
+    module.resource_group
+  ]
+}
+
 module "network" {
   source = "../../modules/network"
 
@@ -64,7 +78,163 @@ module "network" {
   address_space       = var.hub_vnet_address_space
   subnets             = var.hub_subnets
   tags                = local.tags
+
+  network_security_groups = {
+    ("${local.name_prefix}-${local.region_code}-nsg-management") = {
+      subnet_names = ["management"]
+
+      rules = [
+        {
+          name                       = "Allow-VNet-Inbound"
+          priority                   = 100
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "VirtualNetwork"
+          destination_address_prefix = "*"
+          description                = "Allow management traffic from the virtual network."
+        }
+      ]
+    }
+
+    ("${local.name_prefix}-${local.region_code}-nsg-aks-system") = {
+      subnet_names = ["aks-system"]
+
+      rules = [
+        {
+          name                       = "Allow-AKS-Node-Internal"
+          priority                   = 100
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.10.0/23"
+          destination_address_prefix = "10.100.10.0/23"
+          description                = "Allow AKS system node-to-node traffic."
+        },
+        {
+          name                       = "Allow-AKS-Workload-Internal"
+          priority                   = 110
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.12.0/22"
+          destination_address_prefix = "10.100.10.0/23"
+          description                = "Allow AKS workload subnet traffic to system nodes."
+        },
+        {
+          name                       = "Allow-AKS-Node-To-Pod"
+          priority                   = 120
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.10.0/23"
+          destination_address_prefix = "10.244.0.0/16"
+          description                = "Allow AKS node traffic to Azure CNI Overlay pods."
+        },
+        {
+          name                       = "Allow-AKS-Pod-To-Node"
+          priority                   = 130
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.244.0.0/16"
+          destination_address_prefix = "10.100.10.0/23"
+          description                = "Allow Azure CNI Overlay pod traffic to AKS system nodes."
+        },
+        {
+          name                       = "Allow-Azure-LoadBalancer"
+          priority                   = 140
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "AzureLoadBalancer"
+          destination_address_prefix = "*"
+          description                = "Allow Azure Load Balancer health probes and platform traffic."
+        }
+      ]
+    }
+
+    ("${local.name_prefix}-${local.region_code}-nsg-aks-workload") = {
+      subnet_names = ["aks-workload"]
+
+      rules = [
+        {
+          name                       = "Allow-AKS-System-Internal"
+          priority                   = 100
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.10.0/23"
+          destination_address_prefix = "10.100.12.0/22"
+          description                = "Allow AKS system node traffic to workloads."
+        },
+        {
+          name                       = "Allow-AKS-Workload-Internal"
+          priority                   = 110
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.12.0/22"
+          destination_address_prefix = "10.100.12.0/22"
+          description                = "Allow workload subnet internal traffic."
+        },
+        {
+          name                       = "Allow-AKS-Node-To-Pod"
+          priority                   = 120
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.100.10.0/23"
+          destination_address_prefix = "10.244.0.0/16"
+          description                = "Allow AKS node traffic to Azure CNI Overlay pods."
+        },
+        {
+          name                       = "Allow-AKS-Pod-To-Pod"
+          priority                   = 130
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "10.244.0.0/16"
+          destination_address_prefix = "10.244.0.0/16"
+          description                = "Allow Azure CNI Overlay pod-to-pod traffic."
+        },
+        {
+          name                       = "Allow-Azure-LoadBalancer"
+          priority                   = 140
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "*"
+          source_port_range          = "*"
+          destination_port_range     = "*"
+          source_address_prefix      = "AzureLoadBalancer"
+          destination_address_prefix = "*"
+          description                = "Allow Azure Load Balancer health probes and platform traffic."
+        }
+      ]
+    }
+  }
 }
+
 
 module "aks" {
   source = "../../modules/aks"
@@ -124,7 +294,6 @@ module "bastion" {
   tags = local.tags
 }
 
-
 resource "azurerm_user_assigned_identity" "resilience_app" {
   name                = "${local.name_prefix}-${local.region_code}-app-identity"
   location            = var.location
@@ -134,9 +303,8 @@ resource "azurerm_user_assigned_identity" "resilience_app" {
 }
 
 resource "azurerm_federated_identity_credential" "resilience_app" {
-  name                = "${local.name_prefix}-${local.region_code}-app-federated"
-  resource_group_name = module.resource_group.name
-  parent_id           = azurerm_user_assigned_identity.resilience_app.id
+  name                      = "${local.name_prefix}-${local.region_code}-app-federated"
+  user_assigned_identity_id = azurerm_user_assigned_identity.resilience_app.id
 
   audience = [
     "api://AzureADTokenExchange"
@@ -168,4 +336,3 @@ resource "azurerm_role_assignment" "current_user_key_vault_secrets_officer" {
 }
 
 data "azurerm_client_config" "current" {}
-

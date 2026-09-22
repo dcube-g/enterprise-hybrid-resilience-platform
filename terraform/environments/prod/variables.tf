@@ -62,6 +62,32 @@ variable "organization" {
   type        = string
   default     = "core"
 }
+
+variable "cost_center" {
+  description = "Cost center used for Azure cost allocation."
+  type        = string
+  default     = "CC-RESILIENCE"
+}
+
+variable "criticality" {
+  description = "Business criticality classification."
+  type        = string
+  default     = "High"
+}
+
+variable "data_classification" {
+  description = "Data classification for the environment."
+  type        = string
+  default     = "Internal"
+}
+
+variable "dr_tier" {
+  description = "Disaster recovery tier for the workload."
+  type        = string
+  default     = "Tier-1"
+}
+
+
 variable "hub_vnet_address_space" {
   description = "Address space for the production hub VNet"
   type        = list(string)

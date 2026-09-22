@@ -1,10 +1,10 @@
-# Enterprise Resilience & Disaster Recovery Platform
+# Enterprise Hybrid Resilience Platform
 
-**Infrastructure as Code • Kubernetes • Multi-Region DR • CI/CD • Observability • Security**
+**Infrastructure as Code • Kubernetes • Multi-Region DR • CI/CD • Observability • Security • Governance • FinOps**
 
-An enterprise-style resilience platform demonstrating the design and automation of **highly available, multi-region containerized workloads** with infrastructure as code, automated delivery, security controls, observability, and disaster recovery.
+An enterprise-style resilience platform demonstrating the design and automation of highly available, multi-region containerized workloads with Infrastructure as Code, automated delivery, security controls, observability, governance, cost management, and disaster recovery.
 
-The platform is implemented on **Microsoft Azure** using Terraform, AKS, Azure DevOps, Azure Traffic Manager, Azure Key Vault, Managed Prometheus, Managed Grafana, and Azure Container Registry.
+The platform is implemented on Microsoft Azure using Terraform, Azure Kubernetes Service (AKS), Azure DevOps, Azure Traffic Manager, Azure Key Vault, Azure Managed Prometheus, Azure Managed Grafana, and Azure Container Registry.
 
 ---
 
@@ -28,8 +28,8 @@ The platform is implemented on **Microsoft Azure** using Terraform, AKS, Azure D
                  │                         │
                  └──────────┬──────────────┘
                             │
-                  Azure Key Vault
-                  Workload Identity
+                     Azure Key Vault
+                   Workload Identity
 
         ┌─────────────────────────────────────┐
         │ Terraform • Azure DevOps • Trivy   │
@@ -41,95 +41,218 @@ The platform is implemented on **Microsoft Azure** using Terraform, AKS, Azure D
 
 ## Key Capabilities
 
-| Area                | Implementation                               |
-| ------------------- | -------------------------------------------- |
-| Infrastructure      | Terraform modules and environment separation |
-| Compute             | Azure Kubernetes Service                     |
-| Disaster Recovery   | Multi-region AKS architecture                |
-| Global Routing      | Azure Traffic Manager priority failover      |
-| CI/CD               | Azure DevOps multi-stage pipeline            |
-| Containers          | Multi-architecture Docker images             |
-| Security            | Trivy HIGH/CRITICAL vulnerability gate       |
-| Secrets             | Azure Key Vault + Workload Identity          |
-| Observability       | Managed Prometheus + Managed Grafana         |
-| Monitoring          | Kubernetes ServiceMonitor                    |
-| Backup Architecture | Azure-native AKS Backup foundation           |
-| Configuration       | Kubernetes Kustomize overlays                |
-| Operations          | DR runbooks and validation evidence          |
+| Area              | Implementation                                    |
+| ----------------- | ------------------------------------------------- |
+| Infrastructure    | Terraform reusable modules                        |
+| Environments      | Production / DR / Global                          |
+| Compute           | Azure Kubernetes Service                          |
+| Primary Region    | Central US                                        |
+| DR Region         | South India                                       |
+| Disaster Recovery | Multi-region AKS architecture                     |
+| Global Routing    | Azure Traffic Manager priority failover           |
+| CI/CD             | Azure DevOps multi-stage pipeline                 |
+| Containers        | Multi-architecture Docker images                  |
+| Registry          | Azure Container Registry                          |
+| Security          | Trivy HIGH/CRITICAL vulnerability gate            |
+| Identity          | AKS Workload Identity / OIDC federation           |
+| Secrets           | Azure Key Vault                                   |
+| Observability     | Managed Prometheus + Managed Grafana              |
+| Monitoring        | Kubernetes ServiceMonitor                         |
+| Backup            | Azure-native AKS Backup foundation                |
+| Governance        | Terraform-managed resource protection             |
+| FinOps            | Standardized tagging and Azure budget alerts      |
+| Compliance        | Compliance control matrix and evidence collection |
+| Configuration     | Kubernetes Kustomize overlays                     |
+| Operations        | DR runbooks and troubleshooting documentation     |
 
 ---
 
 ## Disaster Recovery
 
-The platform implements a **primary-to-DR regional recovery model**:
+The platform implements a primary-to-DR regional recovery model.
 
-**Primary → Central US**
-**DR → South India**
+```text
+Primary
+Central US
+    │
+    │ Traffic Manager
+    │
+    ▼
+South India
+DR Region
+```
 
 The DR workflow includes:
 
 * Health-based traffic monitoring
 * Controlled primary failure simulation
-* Automatic Traffic Manager failover
+* Traffic Manager failover
 * DR application validation
 * Recovery-time measurement
 * Primary restoration
-* Failback validation
-* Operational runbook and evidence
+* Traffic failback
+* Operational runbook
+* Validation evidence
 
 The application-level DR workflow has been validated through controlled failover and failback testing.
 
+### RPO Scope
+
 > **Data-layer RPO:** Transactional database replication is outside the current application scope and therefore is not represented as a validated database RPO.
+
+The validated resilience scope covers application availability, regional failover, traffic redirection, recovery validation, and failback.
 
 ---
 
-## CI/CD & Security
+## CI/CD and Security
 
-The Azure DevOps pipeline provides automated:
+The Azure DevOps pipeline implements automated validation and deployment:
 
 ```text
+Source
+  │
+  ▼
 Validate
-   ↓
+  │
+  ▼
 Build
-   ↓
+  │
+  ▼
 Multi-Architecture Image
-   ↓
+  │
+  ▼
 Trivy Security Scan
-   ↓
+  │
+  ▼
 ACR Push
-   ↓
-Terraform Validation & Plan
-   ↓
+  │
+  ▼
+Terraform Validation / Plan
+  │
+  ▼
 AKS Deployment
-   ↓
+  │
+  ▼
 Application Health Verification
 ```
 
-Security scanning blocks the pipeline on configured **HIGH/CRITICAL vulnerabilities**, while infrastructure changes are validated through Terraform before deployment.
+Security controls include:
+
+* Container vulnerability scanning
+* HIGH/CRITICAL vulnerability gate
+* Azure Container Registry
+* Multi-architecture image validation
+* Terraform validation
+* Infrastructure plan review
+* Kubernetes deployment validation
+* Application health verification
+
+---
+
+## Identity and Secrets
+
+The platform uses Azure Key Vault and AKS Workload Identity to avoid embedding long-lived Azure credentials inside application workloads.
+
+```text
+AKS
+ │
+ ├── OIDC Issuer
+ │
+ ├── Kubernetes ServiceAccount
+ │
+ └── Federated Identity Credential
+              │
+              ▼
+      Microsoft Entra Identity
+              │
+              ▼
+        Azure Key Vault
+```
+
+The federated identity model provides workload-level Azure authentication without requiring permanent Azure credentials inside application containers.
 
 ---
 
 ## Infrastructure as Code
 
-Terraform is organized into reusable modules and isolated environments:
+Terraform is organized into reusable modules and isolated environments.
 
 ```text
 terraform/
-├── modules/
-│   ├── aks/
-│   ├── network/
-│   ├── key-vault/
-│   ├── monitoring/
-│   ├── backup/
-│   └── ...
+├── environments/
+│   ├── prod/
+│   ├── dr/
+│   └── global/
 │
-└── environments/
-    ├── prod/
-    ├── dr/
-    └── global/
+└── modules/
+    ├── acr/
+    ├── aks/
+    ├── backup/
+    ├── bastion/
+    ├── governance/
+    ├── key-vault/
+    ├── log-analytics/
+    ├── network/
+    ├── resource-group/
+    ├── storage/
+    └── ...
 ```
 
-This structure supports repeatable provisioning, controlled changes, environment isolation, and scalable infrastructure management.
+This structure provides:
+
+* Repeatable infrastructure provisioning
+* Environment separation
+* Reusable Terraform modules
+* Controlled infrastructure changes
+* Consistent resource tagging
+* Terraform validation
+* Infrastructure drift visibility
+
+---
+
+## Governance and Resource Protection
+
+Production resources are protected through a Terraform-managed Azure resource-group management lock.
+
+```text
+Production Resource Group
+          │
+          └── CanNotDelete
+                │
+                └── governance-lock-prod
+```
+
+The governance implementation is maintained under:
+
+```text
+terraform/modules/governance/
+```
+
+The lock protects the production resource group against accidental deletion while keeping the governance configuration under Infrastructure as Code.
+
+### Operational Consideration
+
+Azure management locks can affect certain AKS lifecycle operations when Azure-managed resources or extensions require modification.
+
+Any operation requiring temporary lock removal should follow a controlled procedure:
+
+```text
+Identify required operation
+        │
+        ▼
+Controlled lock-removal window
+        │
+        ▼
+Perform approved operation
+        │
+        ▼
+Restore governance lock
+        │
+        ▼
+Terraform plan / validation
+```
+
+The governance lock remains enabled as the normal production state.
 
 ---
 
@@ -142,12 +265,64 @@ The platform integrates:
 * Kubernetes ServiceMonitor
 * Application health endpoints
 * Kubernetes workload health checks
+* Node resource utilization
+* Pod resource utilization
 
-This provides a foundation for **metrics-driven monitoring, alerting, and operational troubleshooting**.
+This provides a foundation for:
+
+* Metrics collection
+* Monitoring
+* Alerting
+* Troubleshooting
+* Capacity assessment
+* SRE-oriented operational practices
 
 ---
 
-## Capacity-Aware Backup Architecture
+## FinOps and Cost Management
+
+The platform implements standardized resource tagging and Azure Cost Management controls to support cost allocation, ownership, and operational accountability.
+
+### Standard Tags
+
+```text
+Environment
+Project
+ManagedBy
+Owner
+CostCenter
+Criticality
+DataClassification
+DRTier
+```
+
+Example:
+
+```text
+CostCenter         = CC-RESILIENCE
+Criticality        = High
+DataClassification = Internal
+DRTier             = Tier-1
+ManagedBy          = Terraform
+```
+
+### Budget Controls
+
+A monthly Azure Cost Management budget is configured with alerts for:
+
+* Actual cost at 80%
+* Forecast cost at 90%
+* Actual cost at 100%
+
+The project also includes production and DR AKS utilization assessment.
+
+The utilization review showed low application CPU consumption but relatively higher memory utilization from Kubernetes and monitoring components. Based on the observed workload and system overhead, no AKS node-size reduction was applied.
+
+This follows a measure-first FinOps approach rather than reducing infrastructure capacity without sufficient utilization evidence.
+
+---
+
+## Backup Architecture
 
 The platform includes an Azure-native AKS Backup foundation consisting of:
 
@@ -158,95 +333,9 @@ The platform includes an Azure-native AKS Backup foundation consisting of:
 * Backup storage
 * Kubernetes BackupHook / RestoreHook configuration
 
-The design separates the **application workload topology** from the **backup infrastructure requirements**, allowing the backup runtime to be introduced through a compatible dedicated node-pool topology when additional capacity is available.
+The design separates application workload topology from backup infrastructure requirements.
 
-This demonstrates a **cost-aware lab implementation with a documented production expansion path**, rather than coupling the application architecture to a specific infrastructure constraint.
-
----
-
-## Engineering Focus
-
-This project demonstrates practical experience across:
-
-**Cloud Infrastructure**
-
-* Azure architecture
-* Networking
-* AKS
-* Identity and RBAC
-* Key Vault
-* Traffic management
-
-**DevOps**
-
-* Terraform
-* Azure DevOps
-* CI/CD automation
-* Docker
-* Kubernetes
-* Kustomize
-
-**SRE & Resilience**
-
-* Multi-region architecture
-* Failover/failback
-* Health-based routing
-* RTO validation
-* Operational runbooks
-* Observability
-
-**Security**
-
-* Container vulnerability scanning
-* Workload Identity
-* Secret management
-* Least-privilege access
-* Infrastructure validation
-
----
-
-## Repository Structure
-
-```text
-enterprise-hybrid-resilience-platform/
-├── application/
-├── docs/
-│   ├── architecture/
-│   └── dr/
-├── kubernetes/
-│   ├── base/
-│   ├── overlays/
-│   └── backup/
-├── pipelines/
-├── policies/
-└── terraform/
-    ├── modules/
-    └── environments/
-        ├── prod/
-        ├── dr/
-        └── global/
-```
-
----
-
-## Backup & Recovery Strategy
-
-The platform uses a **layered resilience strategy** combining regional application failover with Azure-native backup architecture.
-
-### Current Design
-
-* Azure-native AKS Backup foundation
-* Backup Vault and retention policy
-* Trusted Access integration
-* Snapshot infrastructure
-* Kubernetes BackupHook / RestoreHook configuration
-* Multi-region AKS failover through Azure Traffic Manager
-
-The application-level DR path has been validated through controlled failover and failback testing.
-
-### Production Expansion Path
-
-For environments requiring full AKS backup and restore validation, the architecture supports a dedicated backup infrastructure node pool with the capacity and runtime characteristics required by the Azure Backup Extension.
+### Backup Architecture
 
 ```text
 AKS Cluster
@@ -260,28 +349,234 @@ AKS Cluster
     └── Azure Backup Extension
 ```
 
-This approach keeps backup infrastructure isolated from application workloads and provides a clear path from a cost-optimized development environment to a production-scale deployment.
+The current implementation documents the backup architecture and production expansion path rather than claiming unsupported full backup/restore validation.
 
-Detailed architecture decisions and alternative recovery approaches are documented in [`docs/architecture/architecture.md`](docs/architecture/architecture.md).
+---
 
+## Compliance and Operational Evidence
+
+The repository contains a compliance control matrix:
+
+```text
+policies/compliance-control-matrix.md
+```
+
+The matrix maps implemented controls and evidence across:
+
+* Governance
+* Identity and secrets
+* Container security
+* Network security
+* Monitoring
+* Disaster recovery
+* Backup
+* FinOps
+* CI/CD governance
+* Operational readiness
+
+The platform also includes an evidence collection script:
+
+```text
+scripts/collect-platform-evidence.sh
+```
+
+The evidence collector gathers information covering:
+
+* Git state
+* Azure subscription
+* Primary AKS
+* DR AKS
+* Traffic Manager
+* Kubernetes workloads
+* Governance locks
+* Resource tags
+* AKS node pools
+* FinOps budget
+* Backup configuration
+* Terraform validation
+
+The evidence collection script has been syntax-validated and executed successfully.
+
+> The compliance matrix is an engineering control and evidence mapping document. It is not a formal regulatory certification or independent compliance audit.
+
+---
+
+## Operational Documentation
+
+Operational troubleshooting is documented in:
+
+```text
+docs/operations/troubleshooting-and-fixes.md
+```
+
+The documentation covers:
+
+* Terraform state and locking
+* Azure resource protection
+* AzureRM provider changes
+* Azure Container Registry
+* Multi-architecture containers
+* Git and CI/CD issues
+* Kubernetes configuration
+* Argo CD synchronization
+* Workload Identity
+* Key Vault integration
+* Traffic Manager failover/failback
+* AKS Backup constraints
+* Azure DevOps operational workarounds
+
+DR procedures are documented under:
+
+```text
+docs/dr/
+├── dr-runbook.md
+└── dr-validation.md
+```
+
+---
+
+## Repository Structure
+
+```text
+enterprise-hybrid-resilience-platform/
+│
+├── application/
+│
+├── docs/
+│   ├── architecture/
+│   ├── dr/
+│   ├── images/
+│   └── operations/
+│
+├── kubernetes/
+│   ├── base/
+│   ├── overlays/
+│   └── backup/
+│
+├── pipelines/
+│
+├── policies/
+│   └── compliance-control-matrix.md
+│
+├── scripts/
+│   └── collect-platform-evidence.sh
+│
+└── terraform/
+    ├── environments/
+    │   ├── prod/
+    │   ├── dr/
+    │   └── global/
+    │
+    └── modules/
+        ├── acr/
+        ├── aks/
+        ├── backup/
+        ├── bastion/
+        ├── governance/
+        ├── key-vault/
+        ├── log-analytics/
+        ├── network/
+        ├── resource-group/
+        ├── storage/
+        └── ...
+```
+
+---
 
 ## Production Evolution
 
 The architecture is designed to evolve toward a larger enterprise deployment with:
 
 * Dedicated application and infrastructure node pools
-* Expanded backup/restore validation
+* Expanded backup and restore validation
 * Database replication and data-layer RPO
 * Private networking and private endpoints
-* Centralized policy enforcement
+* Centralized Azure Policy enforcement
 * Advanced alerting and SLOs
 * Additional security and compliance controls
 * Automated DR orchestration
 
 ---
 
-## Outcome
+## Final Validation
 
-This project brings together **cloud infrastructure, Kubernetes, Terraform, CI/CD, security, observability, and disaster recovery** into a single reproducible platform.
+| Validation                   | Status  |
+| ---------------------------- | ------- |
+| Terraform Prod validation    | PASS    |
+| Terraform DR validation      | PASS    |
+| Terraform Global validation  | PASS    |
+| Evidence script syntax       | PASS    |
+| Platform evidence collection | PASS    |
+| DR failover validation       | PASS    |
+| DR failback validation       | PASS    |
+| Container security gate      | PASS    |
+| Governance lock              | ACTIVE  |
+| FinOps budget                | ACTIVE  |
+| Compliance control matrix    | PRESENT |
 
-The emphasis is on **automation, resilience, operational evidence, security, and production-oriented engineering practices** rather than isolated technology demonstrations.
+The final compliance and closure phase was completed without requiring additional infrastructure changes.
+
+---
+
+## Engineering Outcomes
+
+The project demonstrates an end-to-end enterprise cloud engineering lifecycle:
+
+```text
+Architecture
+    ↓
+Infrastructure as Code
+    ↓
+Secure CI/CD
+    ↓
+Kubernetes Platform
+    ↓
+Identity & Secrets
+    ↓
+Observability
+    ↓
+Disaster Recovery
+    ↓
+Security & Governance
+    ↓
+FinOps
+    ↓
+Compliance Evidence
+    ↓
+Operational Readiness
+```
+
+The implementation focuses on:
+
+* Automation
+* Repeatability
+* Controlled change
+* Measurable resilience
+* Security-by-design
+* Operational evidence
+* Cost awareness
+
+The platform is designed as a production-oriented engineering demonstration rather than an isolated collection of technology examples.
+
+---
+
+## Project Status
+
+**Final implementation completed — release preparation in progress.**
+
+Major platform capabilities have been implemented and validated across:
+
+* Azure infrastructure
+* Kubernetes
+* Terraform
+* CI/CD
+* Container security
+* Identity and secrets
+* Observability
+* Disaster recovery
+* Governance
+* FinOps
+* Compliance evidence
+* Operational documentation
+
+The remaining activity is limited to final repository review, Git commit, push, and release verification.

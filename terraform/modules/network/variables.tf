@@ -30,3 +30,26 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "network_security_groups" {
+  description = "Optional network security groups and their rules."
+
+  type = map(object({
+    subnet_names = list(string)
+
+    rules = list(object({
+      name                       = string
+      priority                   = number
+      direction                  = string
+      access                     = string
+      protocol                   = string
+      source_port_range          = string
+      destination_port_range     = string
+      source_address_prefix      = string
+      destination_address_prefix = string
+      description                = string
+    }))
+  }))
+
+  default = {}
+}

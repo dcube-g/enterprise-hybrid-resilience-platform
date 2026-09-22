@@ -15,3 +15,10 @@ output "subnet_ids" {
     name => subnet.id
   }
 }
+output "network_security_group_ids" {
+  description = "Map of network security group names to resource IDs"
+  value = {
+    for name, nsg in azurerm_network_security_group.this :
+    name => nsg.id
+  }
+}
