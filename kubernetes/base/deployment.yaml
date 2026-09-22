@@ -52,7 +52,7 @@ spec:
 
       containers:
         - name: resilience-app
-          #image: resilience-app:latest
+          image: resilience-app:latest
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
